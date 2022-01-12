@@ -1,0 +1,109 @@
+/* Simple +/-/* expression language; parser evaluates constant expressions on the fly*/
+/**
+ *  Package and Import Specifications
+ */
+import java_cup.runtime.*;
+
+/**
+ *  Usercode Components
+ */
+parser code {:
+    // Connect this parser to a scanner!
+    Scanner s;
+    Parser(Scanner s){ this.s=s; }
+:}
+
+/* define how to connect to the scanner! */
+scan with {: return s.next_token(); :};
+
+/**
+ *  Symbol Lists
+ */
+
+/* Terminals (tokens returned by the scanner). */
+terminal            PLUS, LPAREN, RPAREN,COMMA,LBRACKET,RBRACKET,IF,ELSE,PREFIX,SUFFIX;
+terminal String     STRING_LITERAL;
+
+/*  Non terminals */
+non terminal           program,get_func_name,get_param,concat,call_func,call_param;
+non terminal String    expr_pro,iff;      // used to store evaluated subexpressions
+
+/**
+ *  Precedence Declarations
+ */
+precedence left PLUS;
+
+
+/**
+ *  The Grammar Rules
+ */
+
+
+program ::= expr_pro:e {:
+            String[] arrOfStr = e.split("~", 0);
+            String function_dec = "";
+            String call_func = "";
+            for (String a : arrOfStr){
+                if(a.charAt(0) == '!'){
+                    function_dec = function_dec + a.substring(1);
+                }
+                else if(a.charAt(0) == '?'){
+                    call_func = call_func + a.substring(1);
+                }
+            }
+			System.out.println("\npublic class Main {");
+			System.out.println("\tpublic static void main(String[] args) {");
+			System.out.printf("%s\n", call_func);
+			System.out.println("\t}");
+            System.out.printf("%s\n", function_dec);
+			System.out.println("}");
+			 :}
+	;
+
+
+expr_pro ::= call_func:s expr_pro:s2                                                         {: RESULT = String.format("?%s~%s",s,s2); :}
+        | get_func_name:s expr_pro:s2                                                           {: RESULT = String.format("!%s~%s",s,s2); :}
+        |                                                                                   {: RESULT = ""; :}
+    ;
+    
+iff ::= IF LPAREN STRING_LITERAL:s PREFIX STRING_LITERAL:s2 RPAREN iff:s3 ELSE iff:s4   {: RESULT = String.format("(%s.startsWith(%s)? %s : %s)",s2,s,s3,s4);:}
+    |   IF LPAREN STRING_LITERAL:s SUFFIX STRING_LITERAL:s2 RPAREN iff:s3 ELSE iff:s4   {: RESULT = String.format("(%s.endsWith(%s)? %s : %s)",s2,s,s3,s4);:}
+    |   STRING_LITERAL:s LPAREN call_param:s2                                     {: RESULT = String.format("%s(%s)",s,s2); :}
+    |   STRING_LITERAL:s PLUS concat:s2                                                    {: RESULT = String.format(" %s + %s",s,s2); :}
+    |   STRING_LITERAL:s                                                                    {: RESULT = String.format(" %s",s); :}
+    ;
+
+concat ::= STRING_LITERAL:s             {: RESULT = String.format("%s",s); :}
+        | STRING_LITERAL:s PLUS concat:s2 {: RESULT = String.format("%s + %s",s,s2); :}
+        |  IF LPAREN STRING_LITERAL:s PREFIX STRING_LITERAL:s2 RPAREN iff:s3 ELSE iff:s4 concat:s5  {: RESULT = String.format("(%s.startsWith(%s)? %s : %s)%s",s2,s,s3,s4,s5);:}
+        |  IF LPAREN STRING_LITERAL:s SUFFIX STRING_LITERAL:s2 RPAREN iff:s3 ELSE iff:s4 concat:s5 {: RESULT = String.format("(%s.endsWith(%s)? %s : %s)%s",s2,s,s3,s4,s5);:}
+    ;
+
+
+get_func_name ::= STRING_LITERAL:s LPAREN get_param:s2 LBRACKET iff:s3 RBRACKET {: RESULT = String.format("\n\tpublic static String %s(%s){\n\t\treturn %s; }",s,s2,s3); :}
+    ;
+
+get_param ::= STRING_LITERAL:s get_param:s1                     {: RESULT = String.format("String %s",s+s1); :}
+            |  COMMA get_param:s2                                {: RESULT = String.format(",%s",s2); :}
+            |  RPAREN                                                    {: RESULT = ""; :}
+    ;
+
+call_func ::= STRING_LITERAL:s LPAREN call_param:s2          {: RESULT = String.format("\t\tSystem.out.println(%s(%s));\n",s,s2); :}
+        |   IF LPAREN STRING_LITERAL:s PREFIX STRING_LITERAL:s2 RPAREN iff:s3 ELSE iff:s4  {: RESULT = String.format("\t\tSystem.out.println(%s.startsWith(%s)? %s : %s);",s2,s,s3,s4);:}
+        |   IF LPAREN STRING_LITERAL:s SUFFIX STRING_LITERAL:s2 RPAREN iff:s3 ELSE iff:s4  {: RESULT = String.format("\t\tSystem.out.println(%s.endsWith(%s)? %s : %s);",s2,s,s3,s4);:}
+        |   STRING_LITERAL:s                                                                {: RESULT = String.format("\t\tSystem.out.println(%s);",s); :}
+        |   expr_pro:s PLUS concat:s2                                               {: RESULT = String.format("\t\tSystem.out.println(%s + %s);",s,s2); :}
+    ;
+
+call_param ::= STRING_LITERAL:s call_param:s1                     {: RESULT = String.format("%s",s+s1); :}
+            | STRING_LITERAL:s PLUS concat:s2 call_param:s1          {: RESULT = String.format("(%s+%s)%s",s,s2,s1); :}
+            | COMMA call_param:s2                                {: RESULT = String.format(",%s",s2); :}
+            | STRING_LITERAL:s LPAREN call_param:s2 call_param:s3     {: RESULT = String.format("%s(%s)%s",s,s2,s3); :}
+
+            |  IF LPAREN STRING_LITERAL:s PREFIX STRING_LITERAL:s2 RPAREN iff:s3 ELSE iff:s4 call_param:s5  {: RESULT = String.format("((%s).startsWith(%s) ? %s : %s)%s",s2,s,s3,s4,s5);:}
+            |  IF LPAREN STRING_LITERAL:s SUFFIX STRING_LITERAL:s2 RPAREN iff:s3 ELSE iff:s4 call_param:s5 {: RESULT = String.format("((%s).endsWith(%s) ? %s : %s)%s",s2,s,s3,s4,s5);:}
+
+            | RPAREN                                                     {: RESULT = ""; :}
+    ;
+
+
